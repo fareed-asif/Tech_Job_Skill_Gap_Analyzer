@@ -8,14 +8,30 @@ import pandas as pd
 from datetime import datetime
 from collections import Counter
 
-# ── Load cleaned_jobs.json from Module 1 ─────────────────
+# ── Helper for section headers ───────────────────────────
+def section(title):
+    print(f"\n{'='*55}")
+    print(f"  {title}")
+    print(f"{'='*55}")
+
+def divider():
+    print(f"  {'-'*51}")
+
+def info(label, value):
+    print(f"  {label:<30} {value}")
+
+
+# ── Load cleaned_jobs.json ───────────────────────────────
+section("LOAD DATA")
+
 try:
     with open("cleaned_jobs.json", "r", encoding="utf-8") as f:
         jobs = json.load(f)
-    print(f"Loaded {len(jobs)} job records from cleaned_jobs.json")
+    info("File", "cleaned_jobs.json")
+    info("Records loaded", len(jobs))
 except FileNotFoundError:
-    print("ERROR: cleaned_jobs.json not found.")
-    print("Run module1_parser.py first to generate it.")
+    print("\n  ERROR: cleaned_jobs.json not found.")
+    print("  Run module1_parser.py first to generate it.")
     raise
 
 
@@ -29,51 +45,21 @@ class SkillIndex:
             "deep learning":    "ai_ml",
             "cloud":            "infrastructure",
         }
-        print(f"SkillIndex ready — {len(self.categories)} skills tracked")
 
-    # ── Method 1: Count skill demand ─────────────────────
     def count_skills(self, jobs_list):
-        """
-        Count how many jobs require each skill.
-        Returns:
-          total_mentions : dict  — total times a skill appears across all jobs
-          job_counts     : dict  — number of distinct jobs requiring each skill
-        Both dicts are sorted highest to lowest by count.
-        .most_common() returns a list of (skill, count) tuples — tuple data structure.
-        """
         all_skills = []
         for job in jobs_list:
             all_skills.extend(job.get("skills", []))
         total_mentions = Counter(all_skills)
 
-        # Count distinct jobs per skill (a skill mentioned twice in one job counts once)
         job_counts = Counter()
         for job in jobs_list:
             for skill in set(job.get("skills", [])):
                 job_counts[skill] += 1
 
-        # .most_common() returns list of (skill, count) tuples
         return dict(total_mentions.most_common()), dict(job_counts.most_common())
 
-    # ── Method 2: Trend analysis via NumPy regression ────
     def compute_trends(self, jobs_list):
-        """
-        Groups job postings by month and counts each skill per month.
-        Applies np.polyfit() linear regression (deg=1) to find the slope
-        of demand over time for each skill.
-
-        Classification uses a combined score of:
-          - normalised slope  (direction of trend over time)
-          - normalised demand (raw volume of jobs requiring the skill)
-        The combined score ranks skills relative to each other, then:
-          top 2    -> 'hot'
-          bottom 1 -> 'declining'
-          rest     -> 'stable'
-
-        This approach is robust even when all slopes are small (e.g. a
-        synthetically balanced dataset where every skill hovers near 50%).
-        """
-        # Build a flat row per (month, skill) occurrence
         rows = []
         for job in jobs_list:
             month = job.get("month", "")
@@ -86,7 +72,6 @@ class SkillIndex:
         months = sorted(df_s["month"].unique())
         skills = list(self.categories.keys())
 
-        # Step 1 — compute raw slope and total demand per skill
         raw = {}
         for skill in skills:
             monthly_counts = [
@@ -102,7 +87,6 @@ class SkillIndex:
                 "monthly_avg":    round(float(y.mean()), 2),
             }
 
-        # Step 2 — normalise slope and demand to [0, 1] across all skills
         slopes  = np.array([raw[s]["slope"]         for s in skills], dtype=float)
         demands = np.array([raw[s]["total_mentions"] for s in skills], dtype=float)
 
@@ -112,11 +96,8 @@ class SkillIndex:
 
         norm_slopes  = normalise(slopes)
         norm_demands = normalise(demands)
+        combined     = 0.4 * norm_slopes + 0.6 * norm_demands
 
-        # Combined score: 40% trend direction + 60% raw demand volume
-        combined = 0.4 * norm_slopes + 0.6 * norm_demands
-
-        # Step 3 — rank and classify relative to each other
         ranked_skills = [skills[i] for i in np.argsort(combined)[::-1]]
         trend_results = {}
         for rank, skill in enumerate(ranked_skills):
@@ -137,21 +118,8 @@ class SkillIndex:
 
         return trend_results
 
-    # ── Method 3: Personalised gap analysis ──────────────
     def compute_gap(self, user_skills, job_counts, trend_data):
-        """
-        Gap score is calculated across ALL skills weighted by tier:
-          missing hot skill       = 3 penalty points  (most critical)
-          missing stable skill    = 1 penalty point   (somewhat important)
-          missing declining skill = 0 penalty points  (not penalised)
-
-        Gap score = total penalty points / max possible points * 100
-
-        This means having only hot skills but missing stable ones still
-        produces a non-zero gap score, which is realistic and meaningful.
-        """
-        user_lower = [s.strip().lower() for s in user_skills if s.strip()]
-
+        user_lower     = [s.strip().lower() for s in user_skills if s.strip()]
         tier_weight    = {"hot": 3, "stable": 1, "declining": 0}
         points_lost    = 0
         max_points     = 0
@@ -168,7 +136,6 @@ class SkillIndex:
                 elif info["classification"] == "stable":
                     missing_stable.append(skill)
 
-        # Sort missing skills by raw job demand — highest priority first
         missing_hot.sort(key=lambda s: job_counts.get(s, 0), reverse=True)
         missing_stable.sort(key=lambda s: job_counts.get(s, 0), reverse=True)
 
@@ -191,53 +158,62 @@ class SkillIndex:
 
 # ── Instantiate ───────────────────────────────────────────
 si = SkillIndex()
+info("SkillIndex ready", f"{len(si.categories)} skills tracked")
 
 
 # ══════════════════════════════════════════════════════════
-# SECTION 1 — Skill demand counts
+# SECTION 1 — Skill Demand Counts
 # ══════════════════════════════════════════════════════════
+section("SECTION 1 — SKILL DEMAND COUNTS")
+
 all_counts, job_counts = si.count_skills(jobs)
-
-# sorted() on .items() produces (skill, count) tuples sorted by count
 ranked_tuples = sorted(job_counts.items(), key=lambda t: t[1], reverse=True)
 
-print(f"\nTotal jobs analyzed: {len(jobs)}")
-print("\nSkill demand ranking — (skill, count) tuples:")
-for skill, count in ranked_tuples:
+info("Total jobs analyzed", len(jobs))
+print()
+
+print(f"  {'Rank':<6} {'Skill':<22} {'Jobs':>6}  {'% of Market':>11}  Chart")
+divider()
+for rank, (skill, count) in enumerate(ranked_tuples, 1):
     pct = (count / len(jobs)) * 100
-    print(f"  {skill:<22} {count:>6} jobs  ({pct:.1f}%)")
+    bar = "█" * int(pct / 3)
+    print(f"  #{rank:<5} {skill:<22} {count:>6}  ({pct:>5.1f}%)     {bar}")
 
 
 # ══════════════════════════════════════════════════════════
-# SECTION 2 — Trend analysis
+# SECTION 2 — Trend Analysis
 # ══════════════════════════════════════════════════════════
+section("SECTION 2 — TREND ANALYSIS")
+
+print("  Running linear regression on monthly data...")
 trend_data = si.compute_trends(jobs)
 
-hot       = [s for s, v in trend_data.items() if v["classification"] == "hot"]
-stable    = [s for s, v in trend_data.items() if v["classification"] == "stable"]
-declining = [s for s, v in trend_data.items() if v["classification"] == "declining"]
+hot      = [s for s, v in trend_data.items() if v["classification"] == "hot"]
+stable   = [s for s, v in trend_data.items() if v["classification"] == "stable"]
+declining= [s for s, v in trend_data.items() if v["classification"] == "declining"]
 
-print("\nTrend Analysis Results:")
-print(f"  Hot skills      : {hot}")
-print(f"  Stable skills   : {stable}")
-print(f"  Declining skills: {declining}")
-print("\nDetailed breakdown:")
-print(f"  {'Skill':<22} {'Slope':>10}  {'Total':>7}  {'Avg/mo':>7}  {'Score':>7}  Classification")
-print("  " + "-" * 72)
-for skill, info in sorted(trend_data.items(), key=lambda x: x[1]["combined_score"], reverse=True):
-    tag = {"hot": "HOT", "stable": "stable", "declining": "declining"}[info["classification"]]
-    print(f"  {skill:<22} {info['slope']:>10.6f}  {info['total_mentions']:>7}  "
-          f"{info['monthly_avg']:>7.1f}  {info['combined_score']:>7.4f}  {tag}")
+print()
+info("Hot skills (rising)",    ", ".join(hot)      or "(none)")
+info("Stable skills",          ", ".join(stable)   or "(none)")
+info("Declining skills",       ", ".join(declining) or "(none)")
+
+divider()
+print(f"  {'Skill':<22} {'Slope':>10}  {'Total':>7}  {'Avg/mo':>7}  {'Score':>7}  Tier")
+divider()
+
+TIER_LABEL = {"hot": "🔥 HOT", "stable": "  stable", "declining": "📉 declining"}
+for skill, v in sorted(trend_data.items(), key=lambda x: x[1]["combined_score"], reverse=True):
+    tag = TIER_LABEL[v["classification"]]
+    print(f"  {skill:<22} {v['slope']:>10.6f}  {v['total_mentions']:>7}  "
+          f"{v['monthly_avg']:>7.1f}  {v['combined_score']:>7.4f}  {tag}")
 
 
 # ══════════════════════════════════════════════════════════
-# SECTION 3 — Interactive skill input & gap analysis
+# SECTION 3 — Interactive Skill Input & Gap Analysis
 # ══════════════════════════════════════════════════════════
+section("SECTION 3 — ENTER YOUR SKILLS")
+
 VALID_SKILLS = list(si.categories.keys())
-
-print("\n" + "=" * 50)
-print("  SKILL GAP ANALYZER — Enter Your Skills")
-print("=" * 50)
 print(f"  Valid options: {', '.join(VALID_SKILLS)}")
 print("  Press Enter with no input when done.\n")
 
@@ -251,48 +227,54 @@ while True:
     if skill in VALID_SKILLS:
         if skill not in my_skills:
             my_skills.append(skill)
-            print(f"  + Added: {skill}")
+            print(f"  ✓  Added: {skill}")
         else:
-            print(f"  Already added: {skill}")
+            print(f"  Already in list: {skill}")
     else:
-        print(f"  Not recognised. Valid options: {', '.join(VALID_SKILLS)}")
-
-print(f"\n  Your skills: {my_skills}")
+        print(f"  ✗  Not recognised. Valid options: {', '.join(VALID_SKILLS)}")
 
 gap = si.compute_gap(my_skills, job_counts, trend_data)
 
-print("\n" + "=" * 50)
-print("  GAP ANALYSIS RESULTS")
-print("=" * 50)
-print(f"  Gap Score            : {gap['gap_score']}%")
-print(f"  Your strengths (hot) : {gap['user_hot_skills']       or '(none yet)'}")
-print(f"  Your stable skills   : {gap['user_stable_skills']    or '(none)'}")
-print(f"  Deprioritize         : {gap['user_declining_skills']  or '(none)'}")
-print(f"  Hot to learn         : {gap['missing_hot_skills']    or '(none)'}")
-print(f"  Stable to learn      : {gap['missing_stable_skills'] or '(none)'}")
+section("GAP ANALYSIS RESULTS")
+
+info("Your skills",         ", ".join(my_skills) or "(none)")
+divider()
+info("Gap Score",           f"{gap['gap_score']}%")
+divider()
+info("Your HOT skills",     ", ".join(gap['user_hot_skills'])      or "(none yet)")
+info("Your stable skills",  ", ".join(gap['user_stable_skills'])   or "(none)")
+info("Deprioritize",        ", ".join(gap['user_declining_skills']) or "(none)")
+divider()
+
+print(f"\n  Priority skills to learn:\n")
+for i, s in enumerate(gap['missing_hot_skills'], 1):
+    count = job_counts.get(s, 0)
+    pct   = (count / len(jobs)) * 100
+    print(f"  {i}. 🔥 {s:<22}  in {count} jobs ({pct:.1f}%)  ← HOT")
+for i, s in enumerate(gap['missing_stable_skills'], len(gap['missing_hot_skills']) + 1):
+    count = job_counts.get(s, 0)
+    pct   = (count / len(jobs)) * 100
+    print(f"  {i}.    {s:<22}  in {count} jobs ({pct:.1f}%)")
+
+if not gap['missing_hot_skills'] and not gap['missing_stable_skills']:
+    print("  (none — great profile!)")
 
 print()
 if gap["gap_score"] == 0.0:
-    print("  Perfect score — you have all hot and stable skills.")
+    print("  ✓  Perfect score — you have all hot and stable skills.")
 elif gap["gap_score"] <= 25.0:
-    print("  Strong profile. Small gap remaining.")
-    if gap["missing_hot_skills"]:
-        print(f"  One hot skill to add  : {gap['missing_hot_skills'][0]}")
-    elif gap["missing_stable_skills"]:
-        print(f"  Stable skill to add   : {gap['missing_stable_skills'][0]}")
+    print("  ✓  Strong profile. Small gap remaining.")
 elif gap["gap_score"] <= 60.0:
-    print("  Moderate gap. Focus on hot skills first.")
-    if gap["missing_hot_skills"]:
-        print(f"  Start with: {gap['missing_hot_skills'][0]}")
+    print("  !  Moderate gap. Focus on hot skills first.")
 else:
-    print("  Large gap. Prioritise hot skills immediately.")
-    if gap["missing_hot_skills"]:
-        print(f"  Start with: {gap['missing_hot_skills'][0]}")
+    print("  ✗  Large gap. Prioritise hot skills immediately.")
 
 
 # ══════════════════════════════════════════════════════════
 # SECTION 4 — Save skill_report.json
 # ══════════════════════════════════════════════════════════
+section("SECTION 4 — SAVE OUTPUT")
+
 report = {
     "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     "total_jobs":   len(jobs),
@@ -304,5 +286,7 @@ report = {
 with open("skill_report.json", "w", encoding="utf-8") as f:
     json.dump(report, f, indent=2)
 
-print("\nSaved skill_report.json")
-print("Module 2 complete — run module3_report.py next.")
+info("skill_report.json", "saved")
+
+print(f"\n  ✓  Module 2 complete! Run module3_report.py next.")
+print(f"{'='*55}\n")
