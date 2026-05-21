@@ -195,4 +195,8 @@ info("Duplicates",    f"{dupes_removed} removed")
 info("Saved",         f"{len(records)} clean job records")
 info("Output files",  "cleaned_jobs.json, module1_log.txt")
 print(f"\n  ✓  Module 1 complete! Run module2_skill_engine.py next.")
+<<<<<<< HEAD
 print(f"{'='*55}\n")
+=======
+print(f"{'='*55}\n")
+>>>>>>> 50cc318acdd3f983552b6179138fe6e4c7f90472

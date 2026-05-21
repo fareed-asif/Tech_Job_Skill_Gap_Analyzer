@@ -289,4 +289,8 @@ with open("skill_report.json", "w", encoding="utf-8") as f:
 info("skill_report.json", "saved")
 
 print(f"\n  ✓  Module 2 complete! Run module3_report.py next.")
+<<<<<<< HEAD
 print(f"{'='*55}\n")
+=======
+print(f"{'='*55}\n")
+>>>>>>> 50cc318acdd3f983552b6179138fe6e4c7f90472

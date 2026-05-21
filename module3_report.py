@@ -248,4 +248,8 @@ info("trend_chart.png",         "Chart 3 — monthly trend lines")
 info("gap_report.txt",          "plain-text personalized report")
 
 print(f"\n  ✓  Module 3 complete!")
+<<<<<<< HEAD
 print(f"{'='*55}\n")
+=======
+print(f"{'='*55}\n")
+>>>>>>> 50cc318acdd3f983552b6179138fe6e4c7f90472
